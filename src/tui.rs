@@ -1,8 +1,8 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
+    style::{Modifier, Style, Color},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap, LineGauge},
     Frame,
 };
 
@@ -18,7 +18,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
         .constraints([
             Constraint::Length(3),
             Constraint::Min(8),
-            Constraint::Length(6),
+            Constraint::Length(8),
             Constraint::Length(3),
         ])
         .split(area);
@@ -280,7 +280,34 @@ fn draw_lyrics(frame: &mut Frame, app: &App, area: Rect) {
     );
 }
 
+fn draw_progress_bar(app: &App) -> LineGauge<'static> {
+    let pos = app.player.position().unwrap_or(0.0);
+    let dur = app.player.duration()
+        .or_else(|| app.now_playing.as_ref().and_then(|t| t.duration.map(|d| d as f64)))
+        .unwrap_or(0.0);
+    let ratio = if dur > 0.0 { (pos / dur).clamp(0.0, 1.0) } else { 0.0 };
+    LineGauge::default()
+            .ratio(ratio)
+            .line_set(ratatui::symbols::line::THICK)
+            .filled_style(Style::default().fg(Color::Cyan))
+            .unfilled_style(Style::default().fg(Color::DarkGray))
+}
+
 fn draw_now_playing(frame: &mut Frame, app: &App, area: Rect) {
+    let outer_block = Block::default();
+
+    // Calculate inner drawable region after borders
+    let inner_area = outer_block.inner(area);
+    frame.render_widget(outer_block, area);
+
+    // 2. Split inner space: Paragraph gets flexible remaining space, Gauge needs EXACTLY 2 rows
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(6),
+            Constraint::Length(2),
+        ])
+        .split(inner_area);
     let content = if let Some(track) = &app.now_playing {
         vec![
             Line::from(vec![Span::raw("Title : "), Span::raw(track.title.clone())]),
@@ -325,8 +352,9 @@ fn draw_now_playing(frame: &mut Frame, app: &App, area: Rect) {
                     .borders(Borders::ALL),
             )
             .wrap(Wrap { trim: true }),
-        area,
+        chunks[0],
     );
+    frame.render_widget(draw_progress_bar(app), chunks[1]);
 }
 
 fn draw_status(frame: &mut Frame, app: &App, area: Rect) {
